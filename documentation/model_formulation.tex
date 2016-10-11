@@ -1,0 +1,144 @@
+% !TEX TS-program = pdflatex
+% !TEX encoding = UTF-8 Unicode
+
+\documentclass[12pt]{article}
+
+\usepackage[utf8]{inputenc} % set input encoding (not needed with XeLaTeX)
+
+%%% PACKAGES
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} % for better arrays (eg matrices) in maths
+
+
+
+\title{School Districting Problem (SDP) framed as a spatial optimization model}
+\author{Shawn Helm, William Kearney, Sahan Dissanayake}
+%\date{} % Activate to display a given date or no date (if empty),
+         % otherwise the current date is printed 
+
+\begin{document}
+\maketitle
+
+\section{Model Formulation}
+
+\subsection{Variables}
+
+% decision variable
+\begin{equation}
+	X_{i,k,n} \in \{0,1\}
+\end{equation}
+
+% feeder school indicator
+\begin{equation}
+	Y_{n,s} \in \{0,1\}
+\end{equation}
+
+% number of rooms
+\begin{equation}
+	Z_{n,k} \in \mathbb{Z}
+\end{equation}
+
+% sink
+\begin{equation}
+	S_{i,k,n} \in \{0,1\}
+\end{equation}
+
+% amount of flow
+\begin{equation}
+	W_{i,j,k,n} \in \mathbb{Z}
+\end{equation}
+
+where $X_{i,k,n}$ is a binary decision variable indicating whether grade $k$ in planning area $i$ is assigned to school $n$ ($X_{i,k,n}=1$ if assigned, 0 otherwise),
+
+$Y_{n,s}$ is a binary decision variable indicating whether school $n$ feeds to school $s$ for middle school ($Y_{n,s}=1$ if school $n$ feeds to school $s$, 0 otherwise),
+
+$Z_{n,k}$ is a non-negative continuous decision variable indicating the number of rooms supplied for grade $k$ at school $n$,
+
+$S_{i,k,n}$ is a binary decision variable indicating whether planning area $i$ is the sink for a given school $n$ and grade $k$ ($S_{i,k,n}=1$ if a sink, 0 otherwise), and
+
+$W_{i,j,k,n}$ is a non-negative continuous decision variable indicating the amount of flow from planning area $i$ to planning area $j$ for a given school $n$ and grade $k$.
+
+\subsection{Constraints}
+
+% Ensures every grade in every planning area is assigned to exactly one school.
+\begin{equation} \label{eq:every_grade_area_assigned}
+	\displaystyle\sum_{n=1} X_{i,k,n}=1 \quad \forall i,k
+\end{equation}
+
+Constraint~\ref{eq:every_grade_area_assigned} ensures that every grade in every planning area is assigned to exactly one school.
+
+\subsubsection*{Capacity constraints}
+
+This constraint set guarantees some basic requirements related to school capacity. It is expressed as a set of linear equations as follows:
+
+% Ensures there are sufficient rooms for each grade at each school.
+\begin{equation} \label{eq:sufficient_rooms}
+	totalRooms_{n} \geq (\displaystyle\sum_{k \in L} Z_{n,k} + \displaystyle\sum_{k \in M} Z_{n,k}) \quad \forall n
+\end{equation}
+
+% Ensures the number of students in a given grade going a given school does not exceed the number of seats available for that grade at that school.
+\begin{equation} \label{eq:seat_capacity_upper_bound}
+	\displaystyle\sum_{i \in A} (X_{i,k,n} \cdot enrollment_{i,k} \cdot captureRate_{n,k}) \leq upperClassSizeBound_{k} \cdot Z_{n,k} \quad \forall n,k
+\end{equation}
+
+% Ensures the number of students in a given grade going a given school does not exceed the number of seats available for that grade at that school.
+\begin{equation} \label{eq:seat_capacity_lower_bound}
+	\displaystyle\sum_{i \in A} (X_{i,k,n} \cdot enrollment_{i,k} \cdot captureRate_{n,k}) \geq lowerClassSizeBound_{k} \cdot Z_{n,k} \quad \forall n,k
+\end{equation}
+
+where $A$ is the set of all planning areas, $enrollment_{i,k}$ is the neighborhood enrollment in planning area $i$ and grade $k$, $captureRate_{n,k}$ is the percent of neighboorhood that attends school $n$ in grade $k$, $upperClassSizeBound_{k}$ is the maximum classroom size permitted for grade $k$, $lowerClassSizeBound_{k}$ is the minimum classroom size permitted for grade $k$, $totalRooms_{n}$ is the number of classrooms available in school $n$, $L$ is the set of lower school grades (e.g. $L=\{0,1,2,3,4,5\}$), and $M$ is the sert of middle school grades (e.g. $L=\{6,7,8\}$)
+
+
+Constraint~\ref{eq:sufficient_rooms} ensures there are sufficient rooms for each grade at each school.
+
+Constrainst~\ref{eq:seat_capacity_upper_bound} and \ref{eq:seat_capacity_lower_bound} ensure that the number of students in a given grade going a given school does not exceed the number of seats available for that grade at that school.
+
+\subsubsection*{Feeder pattern constraints}
+
+This constraint set guarantees appropriate feeder patterns exist between lower (i.e. grades 0 through 6) and middle (i.e. grades 6 through 8) schools. It is expressed as a set of linear equations as follows:
+
+% Ensure lower school (n) feeds to no more than 1 middle schools, itself included
+\begin{equation} \label{eq:stable_feeder_constr_1}
+	\displaystyle\sum_{s=1} Y_{n,s} \leq 1 \quad \forall n
+\end{equation}
+
+% Y[n,s] = 1 if lower school (n) feeds to school (s) for middle school
+\begin{equation} \label{eq:stable_feeder_constr_2}
+	Y_{n,s} \geq X_{i,0,n} +  X_{i,6,s} - 1 \quad \forall i,n,s
+\end{equation}
+
+Constraint~\ref{eq:stable_feeder_constr_1} ensures that lower school $n$ feeds to no more than 1 middle school $s$, itself included.
+
+Constraint~\ref{eq:stable_feeder_constr_2} ensures that $Y_{n,s}=1$ if school $n$ in lower school (i.e., $k=0$) feeds to school $s$ for middle school (i.e., $k=6$).
+
+\subsubsection*{Spatial contiguity constraints}
+
+This constraint set guarantees to select a contiguous region from a set of planning areas regardless of other constraints imposed. It is expressed as a set of linear equations as follows:
+
+% Ensures net flow moves towards sink; avoids cycles in graphs
+\begin{equation} \label{eq:net_flow}
+	\displaystyle\sum_{j \forall A} W_{i,j,k,n} - \displaystyle\sum_{j \forall A} W_{j,i,k,n} \geq X_{i,k,n} - M \cdot S_{i,k,n} \quad \forall i,n,k
+\end{equation}
+
+% Ensures there is no flow in or out of the subgraph
+\begin{equation} \label{eq:flow_out_of_subgraph}
+	\displaystyle\sum_{j \forall A} W_{i,j,k,n} \leq M \cdot X_{i,k,n} \quad \forall i,n,k
+\end{equation}
+
+% Make sure there is no more than one 'sink' per school/grade combination
+\begin{equation} \label{eq:sink_per_school}
+	\displaystyle\sum_{i \forall A} S_{i,k,n} \leq 1 \quad \forall n,k
+\end{equation}
+
+where $A$ is the set of all planning areas and $M$ is the exact number of is a non-negative integer indicating the maximum allowable number of planning areas to be chosen for a district (here $M$ is set to the number of planning areas).
+
+Constraint~\ref{eq:net_flow} ensures net flow moves towards a sink and avoids cycles in graphs.
+Constraint~\ref{eq:flow_out_of_subgraph} ensures there is no flow in or out of the subgraph (i.e. school boundary).
+Constraint~\ref{eq:sink_per_school} ensures there is no more than one sink per school/grade combination.
+
+
+\end{document}
+
