@@ -1,5 +1,8 @@
 
 
+data/
+
+
 # Gurobi files #
 ################
 *.mps
@@ -12,6 +15,7 @@
 # latex #
 #########
 *.aux
+*.bak
 
 # Logs and databases #
 ######################
