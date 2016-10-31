@@ -8,6 +8,8 @@ from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
+import cPickle as pickle
+
 try:
 	import argparse
 	flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
@@ -51,10 +53,13 @@ def get_credentials():
 	return credentials
 
 def get_data():
+	print("Getting credentials")
 	credentials = get_credentials()
 	http = credentials.authorize(httplib2.Http())
 	discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?version=v4')
 	service = discovery.build('sheets', 'v4', http=http, discoveryServiceUrl=discoveryUrl)
+
+	print("Getting data")
 
 	# staff
 	rangeName = 'staff!A:M'
@@ -63,34 +68,36 @@ def get_data():
 	staff_headers = staff.pop(0)
 
 	# staff_course
-	rangeName = 'staff_course!A:M'
+	rangeName = 'staff_course!A:E'
 	result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_DATA_ID, range=rangeName).execute()
 	staff_course = result.get('values', [])
 	staff_course_headers = staff_course.pop(0)
 
 	# students
-	rangeName = 'students!A:M'
+	rangeName = 'students!A:I'
 	result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_DATA_ID, range=rangeName).execute()
 	students = result.get('values', [])
 	students_headers = students.pop(0)
 
 	# student_courses
-	rangeName = 'student_courses!A:M'
+	rangeName = 'student_courses!A:E'
 	result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_DATA_ID, range=rangeName).execute()
 	student_courses = result.get('values', [])
 	student_courses_headers = student_courses.pop(0)
 
 	# courses
-	rangeName = 'courses!A:M'
+	rangeName = 'courses!A:Q'
 	result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_DATA_ID, range=rangeName).execute()
 	courses = result.get('values', [])
 	courses_headers = courses.pop(0)
 
 	# rooms
-	rangeName = 'rooms!A:M'
+	rangeName = 'rooms!A:I'
 	result = service.spreadsheets().values().get(spreadsheetId=SPREADSHEET_DATA_ID, range=rangeName).execute()
 	rooms = result.get('values', [])
 	rooms_headers = rooms.pop(0)
+
+	print("Converting raw data")
 
 	# convert lists of lists to pandas dataframes
 	staff_data_frame = pd.DataFrame(staff, columns=staff_headers)
@@ -101,18 +108,21 @@ def get_data():
 	rooms_data_frame = pd.DataFrame(rooms, columns=rooms_headers)
 
 	
-	staff_list = list(staff_data_frame.staff.unique())		# set of staff/teachers
-	courses = list(staff_course_data_frame.course.unique())	# set of courses
+	staff_list = list(staff_data_frame.staff.unique())					# set of staff/teachers
+	courses = list(staff_course_data_frame.course.unique())				# set of courses
+	course_types = list(courses_data_frame.Course_Department.unique())	# set of course types
 	students = list(student_courses_data_frame.student.unique())		# set of students
 
-	staff_course = {} 	# indicates whether or not a staff member teachers a course
-	student_course = {}	# indicates whether or not a student is currently enrolled in a course
-	core = {}			# indicates if a class is a core class
-	PE = {}				# indicates if a class qualifies as PE
-	immersion = {}		# indicates if a class is an immersion class
-	ELL = {}			# indicates if a class is ELL
-	SPED = {}			# indicates if a class if SPED
-	gr05 = {}			# indicates if a class if for fifth grade
+	staff_course = {} 				# indicates whether or not a staff member teachers a course
+	student_course = {}				# indicates whether or not a student is currently enrolled in a course
+	core = {}						# indicates if a class is a core class
+	PE = {}							# indicates if a class qualifies as PE
+	immersion = {}					# indicates if a class is an immersion class
+	ELL = {}						# indicates if a class is ELL
+	SPED = {}						# indicates if a class if SPED
+	gr05 = {}						# indicates if a class if for fifth grade
+	core_type_indicator = {}		# indicates if a course is of a core type
+	max_class_size = {}				# indicates what the max class size is for each class
 
 	print("Building dictionaries by course")
 	count = 0
@@ -138,6 +148,14 @@ def get_data():
 		ELL[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'ELL'].values[0]
 		SPED[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'SPED'].values[0]
 		gr05[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'gr05'].values[0]
+		max_class_size[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'max_size'].values[0]
+
+		# check to see if this course is of this course type AND course is core
+		for course_type in course_types:
+			if core[course] == 1 and ((courses_data_frame['course'] == course) & (courses_data_frame['Course_Department'] == course_type)).any():
+				core_type_indicator[course, course_type] = 1
+			else:
+				core_type_indicator[course, course_type] = 0
 
 		print '{}%\r'.format(status),
 		status = round((float(count) / float(len(courses))*100), 1)
@@ -148,6 +166,7 @@ def get_data():
 
 	data["staff_list"] = staff_list
 	data["courses"] = courses
+	data["course_types"] = course_types
 	data["students"] = students
 	data["staff_course"] = staff_course
 	data["student_course"] = student_course
@@ -157,6 +176,8 @@ def get_data():
 	data["ELL"] = ELL
 	data["SPED"] = SPED
 	data["gr05"] = gr05
+	data["max_class_size"] = max_class_size
+	data["core_type_indicator"] = core_type_indicator
 
 
 	return data
