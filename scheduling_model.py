@@ -11,14 +11,16 @@ from gurobipy import *
 
 # define some important fields
 NUM_PERIODS_PER_DAY = 8
-periods = tuple([x for x in range(1, NUM_PERIODS_PER_DAY+1)])
+periods = tuple([str(x) for x in range(1, NUM_PERIODS_PER_DAY+1)])
+
+NUM_CORE_CLASSES = 5
 
 MAX_NUMBER_PERIODS_PER_TEACHER = 5
 
 if NUM_PERIODS_PER_DAY == 7:
-	lunch_periods = ["03", "04"]
+	lunch_periods = ["3", "4"]
 elif NUM_PERIODS_PER_DAY == 8:
-	lunch_periods = ["04", "05"]
+	lunch_periods = ["4", "5"]
 
 NUM_DAYS = 3
 days = tuple(list(string.ascii_uppercase)[0:NUM_DAYS])
@@ -32,7 +34,7 @@ def build_model():
 
 	# get name of data file and output path
 	Tk().withdraw() # we don't want a full GUI, so keep the root window from appearing
-	data_filename = askopenfilename(title="Choose a pickled data object", initialdir="../data/")
+	data_filename = askopenfilename(title="Choose a pickled data object", initialdir="./data/")
 	print("Loading data from {}".format(data_filename))
 	data = pickle.load( open(data_filename, "r") )
 
@@ -52,7 +54,6 @@ def build_model():
 	max_class_size = data["max_class_size"]
 	core_type_indicator = data["core_type_indicator"]
 
-
 	X = {}			# decision variable for student assignments
 	Y = {}			# decision variable for teacher assignments
 
@@ -60,41 +61,32 @@ def build_model():
 	model = Model("school-scheduling")
 
 	print("Building decision variables")
-	var_counter_actual = 0
-	var_counter_removed = 0
 	count = 0
 	status = 0.0
 	for course in courses:
 		for period in periods:
 			for student in students:
 				X[student, course, period] = model.addVar(vtype=GRB.BINARY, name='X.{}.{}.{}'.format(student, course, period))
-				var_counter_actual += 1
 
 			for teacher in staff_list:
 				# if a teacher isn't teaching a course, then they can't teach it (i.e don't create a variable). NOTE: this is a simplifing assumption
 				if staff_course[teacher, course] == 0:
 					Y[teacher, course, period] = 0
-					var_counter_removed += 1
 				else:
 					Y[teacher, course, period] = model.addVar(vtype=GRB.BINARY, name='Y.{}.{}.{}'.format(teacher, course, period))
-					var_counter_actual += 1
 
 			print '{}%\r'.format(status),
 			status = round((float(count) / float(len(courses)*len(periods))*100), 1)
 			count += 1
 
-	print "Var counter removed: {}".format(var_counter_removed)
-	print "Var counter actual: {}".format(var_counter_actual)
-
-
 	model.update()
 
 	print("Adding constraints to ensure every student is fully scheduled.")
 	for student in students:
-		model.addConstr(
-			quicksum(X[student, course, period] for course in courses for period in periods)
-			== NUM_PERIODS_PER_DAY, name="every_student_fully_scheduled_{}".format(student))
-
+		for period in periods:
+			model.addConstr(
+				quicksum(X[student, course, period] for course in courses)
+				== 1, name="every_student_fully_scheduled_{}_{}".format(student, period))
 
 	print("Adding constraint to limit one teacher per course/period")
 	for course in courses:
@@ -103,12 +95,21 @@ def build_model():
 				quicksum(Y[teacher,course,period] for teacher in staff_list) <= 1,
 				name='one_teacher_per_course_and_period_{}_{}'.format(course, period))
 
+	print("Ensure student can't take a given class more than once")
+	for student in students:
+		for course in courses:
+			model.addConstr(
+				quicksum(X[student, course, period] for period in periods) <= 1,
+				name='cant_take_class_more_than_once_{}_{}'.format(student, course))
+
 	print("Adding constraint to limit total number of courses each teacher is assigned")
 	for teacher in staff_list:
 		model.addConstr(
 			quicksum(Y[teacher,course,period] for course in courses for period in periods) <= 5,
-			name='limit_number_classes_per_teacher_{}'.format(teacher))
-
+			name='upper_limit_number_classes_per_teacher_{}'.format(teacher))
+		model.addConstr(
+			quicksum(Y[teacher,course,period] for course in courses for period in periods) >= 1,
+			name='lower_limit_number_classes_per_teacher_{}'.format(teacher))
 
 	print("Adding constraint to limit the number of students enrolled in each course")
 	for course in courses:
@@ -117,13 +118,19 @@ def build_model():
 				quicksum(X[student,course,period] for student in students) <= max_class_size[course] * quicksum(Y[teacher,course,period] for teacher in staff_list),
 				name='max_class_size_{}_{}'.format(course, period))
 
-	print("Adding constraint to ensure each student takes at least one of each type of core class")
-	for student in students:
-		for course_type in course_types:
-			model.addConstr(
-				quicksum(X[student, course, period] * core_type_indicator[course, course_type] for course in courses for period in periods) >= 1,
-				name='core_class_requirement_{}_{}'.format(student, course_type))
+	# print("Adding constraint to ensure each student takes at least one of each type of core class")
+	# for student in students:
+	# 	# for course_type in course_types:
+	# 	for course_type in ["MSMath"]:
+	# 		model.addConstr(
+	# 			quicksum(X[student, course, period] * core_type_indicator[course, course_type] for course in courses for period in periods) >= 1,
+	# 			name='core_class_requirement_{}_{}'.format(student, course_type))
 
+	print("Ensure each student takes at least {} core classes".format(NUM_CORE_CLASSES))
+	for student in students:
+		model.addConstr(
+			quicksum(X[student, course, period]*core[course] for course in courses for period in periods) == NUM_CORE_CLASSES,
+			name='core_class_requirement_{}'.format(student))
 
 	print("Assign students and teachers to lunch")
 	for student in students:
@@ -133,6 +140,23 @@ def build_model():
 			+ X[student, "Lunch2", lunch_periods[0]]
 			+ X[student, "Lunch2", lunch_periods[1]] == 1,
 			name="assign_student_lunch_{}".format(student))
+
+
+
+	# print("Ensure student can't take a given class type more than twice per day")
+	# for student in students:
+	# 	for course_type in course_types:
+	# 		model.addConstr(
+	# 			quicksum(X[student, course, period] for period in periods for course in courses if core_type_indicator[course, course_type] == 1) <= 2,
+	# 			name='cant_take_core_class_type_more_than_once_{}_{}'.format(student, course_type))
+
+	print("Force current students/class assignments")
+	for student in students:
+		for course in courses:
+			if student_course[student, course] == 1:
+				model.addConstr(
+					quicksum(X[student, course, period] for period in periods) == 1,
+					name='force_class_assignment_{}_{}'.format(student, course))
 
 	model.update()
 
