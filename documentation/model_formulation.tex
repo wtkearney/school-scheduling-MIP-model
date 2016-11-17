@@ -9,105 +9,124 @@
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{graphicx}
-\usepackage{booktabs} % for much better looking tables
-\usepackage{array} % for better arrays (eg matrices) in maths
-\usepackage{breqn} % breaks lines
+\usepackage{booktabs}	 % for much better looking tables
+\usepackage{array}	 % for better arrays (eg matrices) in maths
+\usepackage{breqn} 	% breaks lines
+\usepackage{authblk}	% helps with authors on title page
+\usepackage{multirow}
 
-
-
-\title{MIP School Scheduling}
-\author{Will Kearney, Sonimar Poppe, Niguel Morfin, and Asrar Ahmed Syed}
+%----------------------------------------------------------------------------
+\begin{document}
+%----------------------------------------------------------------------------
+\renewcommand\Authfont{\small}
+\renewcommand\Affilfont{\itshape\footnotesize}
+%----------------------------------------------------------------------------
+\title{Middle School Course Scheduling as a Linear Programming Model}
+%----------------------------------------------------------------------------
+\author[1]{Will Kearney}
+\author[1]{Sonimar Poppe}
+\author[2]{Niguel Morfin}
+\author[3]{Asrar Ahmed Syed}
+\affil[1]{Portland Public Schools}
+%----------------------------------------------------------------------------
 %\date{} % Activate to display a given date or no date (if empty),
          % otherwise the current date is printed 
-
-\begin{document}
+%----------------------------------------------------------------------------
 \maketitle
-
+%----------------------------------------------------------------------------
+\begin{abstract}
+This is something we need to do eventually.
+\end{abstract}
+%----------------------------------------------------------------------------
 \section{Model Formulation}
+
 
 \begin{table}[]
 \centering
-\caption{The notation used in our formulation}
-\label{notationl}
+\caption{The data notation used in our formulation}
+\label{tab:data-notation}
 \begin{tabular}{ll}
 \hline
-S & Set of students \\
-T & Set of teachers \\
-C & Set of courses  \\
-P & Set of periods  \\
-D & Set of days    \\ \hline
+$maxClassSize_{c}$ & The maximum number of students \\
+ & permitted in class $c$ \\
+$numRequiredCore$ & The number of required core classes per student \\
+\hline
 \end{tabular}
 \end{table}
 
-\subsection{Variables}
 
-% decision variable
+\subsection{Decision Variables}
+
+% student decision variables
 \begin{equation}
-	X_{s,t,c,p,d} \in \{0,1\}
+	X_{s,c,p} = 
+	\begin{cases}
+		1, & \text{if student}\ s \text{ is assigned to course}\ c \text{ in period}\ p	\\
+		0, & \text{otherwise}
+	\end{cases}
 \end{equation}
 
-where $X_{s,t,c,p,d}$ is a binary decision variable indicating whether student $s \in S$ is assigned to teacher $t \in T$ for course $c \in C$ in period $p \in P$ on day $d \in D$ ($X_{s,t,c,p,d}=1$ if student is assigned, 0 otherwise).
+and
 
-
+% staff decision variables
 \begin{equation}
-	num\_students\_assigned_{t,c,p,d} \in \mathbb{Z}
+	Y_{t,c,p} = 
+	\begin{cases}
+		1, & \text{if teacher}\ t \text{ is assigned to course}\ c \text{ in period}\ p	\\
+		0, & \text{otherwise}
+	\end{cases}
 \end{equation}
-
-where $num\_students\_assigned_{t,c,p,d}$ is an integer variable counting the number of students assigned to a given teacher $t \in T$ for course $c \in C$ in period $p \in P$ on day $d \in D$.
-
-
-\begin{equation}
-	teacher\_scheduled\_indicator_{t,c,p,d} \in \{0,1\}
-\end{equation}
-
-where $teacher\_scheduled\_indicator_{t,c,p,d}$ is a binary variable indicating if a given teacher $t \in T$ is scheduled for course $c \in C$ in period $p \in P$ on day $d \in D$.
-
 
 \subsection{Constraints}
 
-% Ensures every student is fully scheduled
-\begin{equation} \label{eq:students_fully_scheduled}
-	\displaystyle\sum_{t=1}\sum_{c=1}\sum_{p=1} X_{s,t,c,p,d}=7 \quad \forall s,d
+The first constraint set deals primarily with capacity.
+
+\begin{equation} \label{eq:every-student-fully-scheduled}
+	\displaystyle \sum_{c} X_{s,c,p} = 1 \quad \forall s,p
 \end{equation}
 
-Constraint~\ref{eq:students_fully_scheduled} ensures that every student is fully scheduled (i.e. taking a full 7 periods each day).
-
-% Counts the number of students assigned
-\begin{equation} \label{eq:count_num_students_assigned}
-	num\_students\_assigned_{t,c,p,d} = \displaystyle\sum_{s=1} X_{s,t,c,p,d}  \quad \forall t,c,p,d
+\begin{equation} \label{eq:max-one-teacher-per-course-period}
+	\displaystyle \sum_{t} Y_{t,c,p} = 1 \quad \forall c,p
 \end{equation}
 
-Constraint~\ref{eq:count_num_students_assigned} links the $num\_students\_assigned_{t,c,p,d}$ variable by counting the number of students assigned for each teacher $t \in T$, course $c \in C$, period $p \in P$, and day $d \in D$.
+Constrainst~\ref{eq:every-student-fully-scheduled} ensures that every student is full scheduled (i.e. taking exactly one course every period of the day). Similarly, constrainst~\ref{eq:max-one-teacher-per-course-period} ensures that at maximum only one teacher can be assigned to a given course and period.
 
-% Link teacher scheduled indicator variable
-\begin{multline}\label{eq:link_teacher_scheduled_indicator}
-%\begin{equation} \label{eq:link_teacher_scheduled_indicator}
-	teacher\_scheduled\_indicator_{t,c,p,d} \cdot M \\ \geq num\_students\_assigned_{t,c,p,d}  \quad \forall t,c,p,d
-%\end{equation}
-\end{multline}
-
-Constraint~\ref{eq:link_teacher_scheduled_indicator} sets $teacher\_scheduled\_indicator_{t,c,p,d}=1$ if $num\_students\_assigned_{t,c,p,d}>0$ through the use of a sufficiently large `Big M' variable $M$.
-
-% Every teacher only teaches one course for each period on each day
-\begin{equation} \label{eq:teachers_not_double_scheduled}
-	\displaystyle\sum_{c=1} teacher\_scheduled\_indicator_{t,c,p,d} \leq 1 \quad \forall t,p,d
+\begin{equation} \label{eq:only-one-class}
+	\displaystyle \sum_{p} X_{s,c,p} \leq 1 \quad \forall s,c
 \end{equation}
 
-Constraint~\ref{eq:teachers_not_double_scheduled} ensures every teacher is teaching no more than one course during each period on every day.
+Constraint~\ref{eq:only-one-class} dictates that a student can't take a given class more than once per day.
 
-% Force student assignment if currently enrolled in core class
-\begin{equation} \label{eq:force_current_assignments}
-	\displaystyle\sum_{t=1}\sum_{p=1}\sum_{d=1} X_{s,t,c,p,d} = 1 \quad \forall s,c \in S,C | P(s,c)
+\begin{equation} \label{eq:number-courses-taught}
+\begin{split}
+	\displaystyle \sum_{c,p} Y_{t,c,p} \geq 1 \quad \forall t \\
+	\displaystyle \sum_{c,p} Y_{t,c,p} \leq 5 \quad \forall t
+\end{split}
 \end{equation}
 
-where $P(s,c)$ is the property in which student $s$ is currently enrolled in course $c$ and course $c$ is a `core course'. Constraint~\ref{eq:force_current_assignments} requires a student to be enrolled in a course if it is designated as a `core course' and they are currently enrolled in it. Note that the course does not need to be in the same period on the same day, or taught by the same teacher.
+Constraint~\ref{eq:number-courses-taught} is designed to limit the number of courses assigned to each teacher between 1 and 5.
 
-% Lunch
-\begin{equation} \label{eq:assign_lunch}
-	 X_{s,t,c_{lunch},p_{4},d} +  X_{s,t,c_{lunch},p_{5},d} = 1 \quad \forall s,t,d
+\begin{equation} \label{eq:class-size-capacity}
+	\displaystyle \sum_{s} X_{s,c,p} \leq maxClassSize_{c} \quad \forall c,p
 \end{equation}
 
-Constraint~\ref{eq:assign_lunch} ensures every student and every teach is assigned one lunch period during either 4th or 5th period.
+Constraint~\ref{eq:class-size-capacity} restricts the maximum number of students assigned to a class and period to the maximum number of seats available (or some arbitrary upper bound).
+
+
+\subsection{Specific Course Requirement}
+
+\begin{equation} \label{eq:num-required-core}
+	\displaystyle \sum_{c,p} X_{s,c,p} \cdot core_{c} = numRequiredCore \quad \forall s
+\end{equation}
+
+Constraint~\ref{eq:num-required-core} ensures that every student is taking a set number of core classes per day. In our formulation, for an 8 period day $numRequiredCore$ is equal to 5.
+
+\begin{equation} \label{eq:lunch-constraint}
+	X_{s,lunch,4} + X_{s,lunch,5} = 1 \quad \forall s
+\end{equation}
+
+Constraint~\ref{eq:lunch-constraint} dictates that each student is assigned to lunch during either period 4 or 5.
+
 
 \end{document}
 
