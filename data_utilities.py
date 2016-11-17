@@ -9,6 +9,7 @@ from oauth2client import tools
 from oauth2client.file import Storage
 
 import cPickle as pickle
+import re
 
 try:
 	import argparse
@@ -113,6 +114,9 @@ def get_data():
 	course_types = list(courses_data_frame.Course_Department.unique())	# set of course types
 	students = list(student_courses_data_frame.student.unique())		# set of students
 
+	for i in range(len(course_types)):
+		course_types[i] = re.sub(r'\W+', '', course_types[i])
+
 	staff_course = {} 				# indicates whether or not a staff member teachers a course
 	student_course = {}				# indicates whether or not a student is currently enrolled in a course
 	core = {}						# indicates if a class is a core class
@@ -142,13 +146,13 @@ def get_data():
 			else:
 				staff_course[staff, course] = 0
 
-		core[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'core'].values[0]
-		PE[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'PE'].values[0]
-		immersion[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'Immersion'].values[0]
-		ELL[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'ELL'].values[0]
-		SPED[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'SPED'].values[0]
-		gr05[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'gr05'].values[0]
-		max_class_size[course] = courses_data_frame.loc[courses_data_frame['course'] == course, 'max_size'].values[0]
+		core[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'core'].values[0])
+		PE[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'PE'].values[0])
+		immersion[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'Immersion'].values[0])
+		ELL[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'ELL'].values[0])
+		SPED[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'SPED'].values[0])
+		gr05[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'gr05'].values[0])
+		max_class_size[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'max_size'].values[0])
 
 		# check to see if this course is of this course type AND course is core
 		for course_type in course_types:
