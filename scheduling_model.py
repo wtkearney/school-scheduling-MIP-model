@@ -53,6 +53,9 @@ def build_model():
 	gr05 = data["gr05"]
 	max_class_size = data["max_class_size"]
 	core_type_indicator = data["core_type_indicator"]
+	FTE = data["FTE"]
+	numPeriods = data["numPeriods"]
+	grade = data["grade"]
 
 	X = {}			# decision variable for student assignments
 	Y = {}			# decision variable for teacher assignments
@@ -88,12 +91,12 @@ def build_model():
 				quicksum(X[student, course, period] for course in courses)
 				== 1, name="every_student_fully_scheduled_{}_{}".format(student, period))
 
-	print("Adding constraint to limit one teacher per course/period")
-	for course in courses:
+	print("Adding constraint to ensure one teacher per course/period")
+	for teacher in staff_list:
 		for period in periods:
 			model.addConstr(
-				quicksum(Y[teacher,course,period] for teacher in staff_list) <= 1,
-				name='one_teacher_per_course_and_period_{}_{}'.format(course, period))
+				quicksum(Y[teacher,course,period] for course in courses) <= 1,
+				name='one_teacher_per_course_and_period_{}_{}'.format(teacher, period))
 
 	print("Ensure student can't take a given class more than once")
 	for student in students:
@@ -104,8 +107,12 @@ def build_model():
 
 	print("Adding constraint to limit total number of courses each teacher is assigned")
 	for teacher in staff_list:
+		if FTE[teacher] >= 0.99:
+			maxNumPeriods = NUM_PERIODS_PER_DAY - 1
+		else:
+			maxNumPeriods = int(FTE[teacher]*NUM_PERIODS_PER_DAY)
 		model.addConstr(
-			quicksum(Y[teacher,course,period] for course in courses for period in periods) <= 5,
+			quicksum(Y[teacher,course,period] for course in courses for period in periods) <= maxNumPeriods,
 			name='upper_limit_number_classes_per_teacher_{}'.format(teacher))
 		model.addConstr(
 			quicksum(Y[teacher,course,period] for course in courses for period in periods) >= 1,
@@ -126,11 +133,20 @@ def build_model():
 	# 			quicksum(X[student, course, period] * core_type_indicator[course, course_type] for course in courses for period in periods) >= 1,
 	# 			name='core_class_requirement_{}_{}'.format(student, course_type))
 
-	print("Ensure each student takes at least {} core classes".format(NUM_CORE_CLASSES))
+	# print("Ensure each student takes at least {} core classes".format(NUM_CORE_CLASSES))
+	# for student in students:
+	# 	model.addConstr(
+	# 		quicksum(X[student, course, period]*core[course] for course in courses for period in periods) == NUM_CORE_CLASSES,
+	# 		name='core_class_requirement_{}'.format(student))
+
+	print("Ensure each student gets assigned the core classes in which they're currently enrolled")
 	for student in students:
-		model.addConstr(
-			quicksum(X[student, course, period]*core[course] for course in courses for period in periods) == NUM_CORE_CLASSES,
-			name='core_class_requirement_{}'.format(student))
+		for course in courses:
+			# check if this student is currently taking this course and it's a core course
+			if student_course[student, course] == 1 and core[course] == 1:
+				model.addConstr(
+					quicksum(X[student, course, period] for period in periods) == 1,
+					name='same_core_class_assignment_{}_{}'.format(student, course))
 
 	print("Assign students and teachers to lunch")
 	for student in students:
@@ -141,7 +157,34 @@ def build_model():
 			+ X[student, "Lunch2", lunch_periods[1]] == 1,
 			name="assign_student_lunch_{}".format(student))
 
+	print("Ensure each student takes PE once a day")
+	for student in students:
+		if grade[student] == 6:
+			PE_courseName = "PE6"
+		elif grade[student] == 7:
+			PE_courseName = "PE7"
+		elif grade[student] == 8:
+			PE_courseName = "PE8"
+		elif grade[student] == 5:
+			continue
+		else:
+			print grade[student]
+		model.addConstr(
+			quicksum(X[student, PE_courseName, period] for period in periods) == 1,
+			name='PE_requirement_{}'.format(student))
 
+	numCurrentElectives = {}
+	for student in students:
+		numCurrentElectives[student] = model.addVar(lb=0,vtype=GRB.INTEGER,name='numCurrentElectives_{}'.format(student))
+	for student in students:
+		model.addConstr(numCurrentElectives[student] ==
+			quicksum(X[student, course, period] * (1-core[course]) * student_course[student,course] for course in courses for period in periods),
+			name='link_num_current_electives_{}'.format(student))
+
+
+	model.setObjective(quicksum(numCurrentElectives[student] for student in students))
+
+	model.ModelSense = GRB.MAXIMIZE
 
 	# print("Ensure student can't take a given class type more than twice per day")
 	# for student in students:
@@ -150,13 +193,13 @@ def build_model():
 	# 			quicksum(X[student, course, period] for period in periods for course in courses if core_type_indicator[course, course_type] == 1) <= 2,
 	# 			name='cant_take_core_class_type_more_than_once_{}_{}'.format(student, course_type))
 
-	print("Force current students/class assignments")
-	for student in students:
-		for course in courses:
-			if student_course[student, course] == 1:
-				model.addConstr(
-					quicksum(X[student, course, period] for period in periods) == 1,
-					name='force_class_assignment_{}_{}'.format(student, course))
+	# print("Force current students/class assignments")
+	# for student in students:
+	# 	for course in courses:
+	# 		if student_course[student, course] == 1:
+	# 			model.addConstr(
+	# 				quicksum(X[student, course, period] for period in periods) == 1,
+	# 				name='force_class_assignment_{}_{}'.format(student, course))
 
 	model.update()
 
