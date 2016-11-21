@@ -127,6 +127,9 @@ def get_data():
 	gr05 = {}						# indicates if a class if for fifth grade
 	core_type_indicator = {}		# indicates if a course is of a core type
 	max_class_size = {}				# indicates what the max class size is for each class
+	FTE = {}						# the number of FTE for each teacher
+	numPeriods = {}					# the number of periods a teacher is currently teaching
+	grade = {}						# the grade of each student
 
 	print("Building dictionaries by course")
 	count = 0
@@ -165,6 +168,19 @@ def get_data():
 		status = round((float(count) / float(len(courses))*100), 1)
 		count += 1
 
+	print("Building dictionaries by staff")
+	FTE = {}						# the number of FTE for each teacher
+	numPeriods = {}					# the number of periods a teacher is currently teaching
+	for staff in staff_list:
+		FTE[staff] = float(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'FTE'].values[0])
+		numPeriods[staff] = float(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'periods'].values[0])
+
+	print("Building dictionaries by student")
+	grade = {}
+	for student in students:
+		grade[student] = int(students_data_frame.loc[students_data_frame['student'] == student, 'grade'].values[0])
+
+
 	# put everything into a big dictionary
 	data = {}
 
@@ -182,6 +198,9 @@ def get_data():
 	data["gr05"] = gr05
 	data["max_class_size"] = max_class_size
 	data["core_type_indicator"] = core_type_indicator
+	data["FTE"] = FTE
+	data["numPeriods"] = numPeriods
+	data["grade"] = grade
 
 
 	return data
