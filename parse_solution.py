@@ -4,49 +4,58 @@ from pyodbc import *
 
 
 from Tkinter import Tk
-from tkFileDialog import askopenfilename
+from tkFileDialog import askopenfilename, asksaveasfilename
 
 
 def read_solution_file(filename):
 	'''Parses Gurobi solution file, returns list (first item is name, second is objective value)'''
 	# Check if file exists
-	print "reading solution file"
+	print "Reading solution file"
 
 	student_variables = {}
 	staff_variables = {}
-	try:
-		with open(filename, 'r') as f:
-			for line in f.readlines():
-				# avoid comments
-				if line[0] == "#":
-					continue
+	with open(filename, 'r') as f:
+		for line in f.readlines():
+			# avoid comments
+			if line[0] == "#" or not (line[0] == 'X' or line[0] == 'Y'):
+				continue
 
-				data = line.split(" ")	# split data into variable name and variable value
-				var_name = data[0]
-				var_value = int(round(float(data[1])))
+			data = line.split(" ")	# split data into variable name and variable value
+			var_name = data[0]
+			var_value = int(round(float(data[1])))
 
-				# check if this decision variable is activated
-				if var_value == 1:
-					# split the variable name (indices are seperated by periods)
-					var_name = var.split(".")
+			# print(var_name)
 
-					var_type = var_name[0]
-					name = var_name[1]
-					course = var_name[2]
-					period = var_name[3]
+			# check if this decision variable is activated
+			if var_value == 1:
+				# split the variable name (indices are seperated by periods)
+				var_name = var_name.split(".")
 
-					if var_type == 'x':	# student decision var
-						student_variables[name, period] = course
+				var_type = var_name[0]
+				name = var_name[1]
+				course = var_name[2]
+				period = var_name[3]
 
-					if var_type == 'y':	# staff decision var
-						staff_variables[name, period] = course
+				if var_type == 'X':	# student decision var
+					student_variables[name, period] = course
 
-	except IOError:
-		print(filename + " does not exist. Exiting.")
-		exit(0)
+				elif var_type == 'Y':	# staff decision var
+					staff_variables[name, period] = course
 
 	print "Read solution."
 	return student_variables, staff_variables
+
+def save_solution_csv(variables, title="Choose an output file"):
+	outputpath = asksaveasfilename(title=title, defaultextension=".csv", initialdir="./")
+	print("Writing csv file to {}".format(outputpath))
+
+	with open(outputpath, 'w+') as f:
+		f.write("name,period,course\n")
+
+		for key,course in variables.iteritems():
+			f.write(str(key[0]) + ",")
+			f.write(str(key[1]) + ",")
+			f.write(str(course) + "\n")
 
 def main():
 	"""Reads solution file, puts it into dictionary."""
@@ -55,13 +64,9 @@ def main():
 
 	student_variables, staff_variables = read_solution_file(filename)
 
-def build_solution_csv(variables):
-	outputpath = asksaveasfilename(title="Choose an output file", defaultextension=".mps", initialdir="../models/")
-	print("Writing model to {}".format(outputpath))
+	save_solution_csv(student_variables, title="Output file for student solution file")
+	save_solution_csv(staff_variables, title="Output file for staff solution file")
 
 if __name__ == '__main__':
-	if len(sys.argv) <= 1:
-		print("Usage: parse_solution.py")
-		exit(0)
 
 	main()
