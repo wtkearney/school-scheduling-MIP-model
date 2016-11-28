@@ -2,6 +2,8 @@
 
 data/
 
+*.csv
+
 
 # Gurobi files #
 ################
