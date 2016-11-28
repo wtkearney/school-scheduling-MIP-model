@@ -127,6 +127,7 @@ def get_data():
 	gr05 = {}						# indicates if a class if for fifth grade
 	core_type_indicator = {}		# indicates if a course is of a core type
 	max_class_size = {}				# indicates what the max class size is for each class
+	min_class_size = {}
 	FTE = {}						# the number of FTE for each teacher
 	numPeriods = {}					# the number of periods a teacher is currently teaching
 	grade = {}						# the grade of each student
@@ -156,6 +157,7 @@ def get_data():
 		SPED[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'SPED'].values[0])
 		gr05[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'gr05'].values[0])
 		max_class_size[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'max_size'].values[0])
+		min_class_size[course] = int(courses_data_frame.loc[courses_data_frame['course'] == course, 'min_size'].values[0])
 
 		# check to see if this course is of this course type AND course is core
 		for course_type in course_types:
@@ -197,6 +199,7 @@ def get_data():
 	data["SPED"] = SPED
 	data["gr05"] = gr05
 	data["max_class_size"] = max_class_size
+	data["min_class_size"] = min_class_size
 	data["core_type_indicator"] = core_type_indicator
 	data["FTE"] = FTE
 	data["numPeriods"] = numPeriods
