@@ -52,6 +52,7 @@ def build_model():
 	SPED = data["SPED"]
 	gr05 = data["gr05"]
 	max_class_size = data["max_class_size"]
+	min_class_size = data["min_class_size"]
 	core_type_indicator = data["core_type_indicator"]
 	FTE = data["FTE"]
 	numPeriods = data["numPeriods"]
@@ -69,11 +70,18 @@ def build_model():
 	for course in courses:
 		for period in periods:
 			for student in students:
-				X[student, course, period] = model.addVar(vtype=GRB.BINARY, name='X.{}.{}.{}'.format(student, course, period))
+				# don't create lunch assignments outside of lunch periods
+				if course in ["Lunch1", "Lunch2"] and period not in lunch_periods:
+					X[student, course, period] = 0
+				else:
+					X[student, course, period] = model.addVar(vtype=GRB.BINARY, name='X.{}.{}.{}'.format(student, course, period))
 
 			for teacher in staff_list:
 				# if a teacher isn't teaching a course, then they can't teach it (i.e don't create a variable). NOTE: this is a simplifing assumption
-				if staff_course[teacher, course] == 0:
+				if staff_course[teacher, course] == 0 and course != "Lunch1" and course != "Lunch2":
+					Y[teacher, course, period] = 0
+				# don't create lunch assignments outside of lunch periods
+				elif course in ["Lunch1", "Lunch2"] and period not in lunch_periods:
 					Y[teacher, course, period] = 0
 				else:
 					Y[teacher, course, period] = model.addVar(vtype=GRB.BINARY, name='Y.{}.{}.{}'.format(teacher, course, period))
@@ -95,7 +103,7 @@ def build_model():
 	for teacher in staff_list:
 		for period in periods:
 			model.addConstr(
-				quicksum(Y[teacher,course,period] for course in courses) <= 1,
+				quicksum(Y[teacher,course,period] for course in courses if course != "Lunch1" and course != "Lunch2") <= 1,
 				name='one_teacher_per_course_and_period_{}_{}'.format(teacher, period))
 
 	print("Ensure student can't take a given class more than once")
@@ -108,9 +116,11 @@ def build_model():
 	print("Adding constraint to limit total number of courses each teacher is assigned")
 	for teacher in staff_list:
 		if FTE[teacher] >= 0.99:
+			# one unallocated period for lunch, and one for a planning period
 			maxNumPeriods = NUM_PERIODS_PER_DAY - 1
 		else:
 			maxNumPeriods = int(FTE[teacher]*NUM_PERIODS_PER_DAY)
+
 		model.addConstr(
 			quicksum(Y[teacher,course,period] for course in courses for period in periods) <= maxNumPeriods,
 			name='upper_limit_number_classes_per_teacher_{}'.format(teacher))
@@ -122,8 +132,14 @@ def build_model():
 	for course in courses:
 		for period in periods:
 			model.addConstr(
-				quicksum(X[student,course,period] for student in students) <= max_class_size[course] * quicksum(Y[teacher,course,period] for teacher in staff_list),
+				quicksum(X[student,course,period] for student in students) <=
+				(max_class_size[course]+(max_class_size[course]*0.1)) * quicksum(Y[teacher,course,period] for teacher in staff_list),
 				name='max_class_size_{}_{}'.format(course, period))
+
+			model.addConstr(
+				quicksum(X[student,course,period] for student in students) >=
+				min_class_size[course] * quicksum(Y[teacher,course,period] for teacher in staff_list),
+				name='min_class_size_{}_{}'.format(course, period))
 
 	# print("Adding constraint to ensure each student takes at least one of each type of core class")
 	# for student in students:
@@ -158,13 +174,64 @@ def build_model():
 			name="assign_student_lunch_{}".format(student))
 
 	for teacher in staff_list:
-		# only one teacher is currently teaching lunch; thus the model is infeasible if this if statement
-		# is removed because they're the only one who _can_ teach lunch, and thus have to teach both sections
-		if staff_course[teacher, "Lunch1"] != 1 and staff_course[teacher, "Lunch2"] != 1:
-			model.addConstr(
-				quicksum(Y[teacher, course, lunch_periods[0]] +
-					Y[teacher, course, lunch_periods[1]] for course in courses) <= 1,
-					name="assign_teacher_lunch_break_{}".format(teacher))
+		model.addConstr(
+			Y[teacher, "Lunch1", lunch_periods[0]]
+			+ Y[teacher, "Lunch1", lunch_periods[1]]
+			+ Y[teacher, "Lunch2", lunch_periods[0]]
+			+ Y[teacher, "Lunch2", lunch_periods[1]] == 1,
+			name="assign_teacher_lunch_{}".format(teacher))
+
+
+	print("Adding indicator variable for each teacher and period")
+	teacherScheduled = {}
+	for teacher in staff_list:
+		for period in periods:
+			teacherScheduled[teacher,period] = model.addVar(vtype=GRB.BINARY,
+				name='teacherScheduled_{}_{}'.format(teacher, period))
+	for teacher in staff_list:
+		for period in periods:
+			model.addConstr(teacherScheduled[teacher, period] == quicksum(Y[teacher, course, period] for course in courses),
+				name='link_teacherScheduled_{}_{}'.format(teacher, period))
+
+	print("Adding constraint so part-time teachers are only scheduled in consecutive periods")
+	w = {}		# 1 if node/period i is a sink for teacher t
+	flow = {}	# flow from node/period i to j
+	for teacher in staff_list:
+		if FTE[teacher] < 0.99:
+			for period1 in periods:
+				w[teacher, period1] = model.addVar(vtype=GRB.BINARY, name='sinkIndicator_{}_{}'.format(teacher,period1))
+
+				# only create flow variables for adjacent periods
+				adjPeriods = [x for x in periods if abs(int(x) - int(period1)) <= 1]
+				for period2 in adjPeriods:
+					flow[teacher, period1, period2] = model.addVar(lb=0,vtype=GRB.INTEGER,
+						name='flow_{}_{}_{}'.format(teacher, period1, period2))
+
+	for teacher in staff_list:
+		if FTE[teacher] < 0.99:
+			M = int(FTE[teacher]*NUM_PERIODS_PER_DAY)
+			for period1 in periods:
+				adjPeriods = [x for x in periods if abs(int(x) - int(period1)) <= 1]
+
+				model.addConstr(quicksum(flow[teacher, period1, period2] for period2 in adjPeriods) -
+					quicksum(flow[teacher, period2, period1] for period2 in adjPeriods) >=
+					teacherScheduled[teacher, period1] - M*w[teacher,period1],
+					name='netOutflow_{}_{}'.format(teacher, period1))
+
+				model.addConstr(quicksum(flow[teacher,period1, period2] for period2 in adjPeriods) <=
+					(M - 1)*teacherScheduled[teacher, period1],
+					name='flowControl_{}_{}'.format(teacher, period1))
+
+				model.addConstr(teacherScheduled[teacher, period1] >= w[teacher, period1],
+					name='if_sink_then_period_activated_{}_{}'.format(teacher,period1))
+
+			model.addConstr(quicksum(w[teacher,period] for period in periods) == 1,
+				name='maxOneSink_{}'.format(teacher))
+
+
+
+			
+			
 
 	# print("Ensure each student takes PE once a day")
 	# for student in students:
@@ -190,17 +257,17 @@ def build_model():
 			quicksum(X[student, course, period] * (1-core[course]) * student_course[student,course] for course in courses for period in periods),
 			name='link_num_current_electives_{}'.format(student))
 
-	print("Creating class size minimax variables")
-	maxClassSize = {}
-	for course in courses:
-		maxClassSize[course] = model.addVar(lb=0,ub=max_class_size[course],vtype=GRB.INTEGER,
-			name='maxClassSize_{}'.format(course))
+	# print("Creating class size minimax variables")
+	# maxClassSize = {}
+	# for course in courses:
+	# 	maxClassSize[course] = model.addVar(lb=0,ub=max_class_size[course],vtype=GRB.CONTINUOUS,
+	# 		name='maxClassSize_{}'.format(course))
 	
-	for course in courses:
-		for period in periods:
-			model.addConstr(
-				maxClassSize[course] >= quicksum(X[student, course, period] for student in students),
-				name='minimax_classSize_link_{}_{}'.format(course, period))
+	# for course in courses:
+	# 	for period in periods:
+	# 		model.addConstr(
+	# 			maxClassSize[course] >= quicksum(X[student, course, period] for student in students),
+	# 			name='minimax_classSize_link_{}_{}'.format(course, period))
 
 
 	# print("Ensure student can't take a given class type more than twice per day")
