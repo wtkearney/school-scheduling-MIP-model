@@ -10,12 +10,10 @@ import os
 from gurobipy import *
 
 # define some important fields
-NUM_PERIODS_PER_DAY = 8
+NUM_PERIODS_PER_DAY = 7
 periods = tuple([str(x) for x in range(1, NUM_PERIODS_PER_DAY+1)])
 
 NUM_CORE_CLASSES = 5
-
-MAX_NUMBER_PERIODS_PER_TEACHER = 5
 
 if NUM_PERIODS_PER_DAY == 7:
 	lunch_periods = ["3", "4"]
@@ -50,13 +48,15 @@ def build_model():
 	immersion = data["immersion"]
 	ELL = data["ELL"]
 	SPED = data["SPED"]
-	gr05 = data["gr05"]
 	max_class_size = data["max_class_size"]
 	min_class_size = data["min_class_size"]
 	core_type_indicator = data["core_type_indicator"]
 	FTE = data["FTE"]
 	numPeriods = data["numPeriods"]
 	grade = data["grade"]
+	grade_low = data["grade_low"]
+	grade_high = data["grade_high"]
+	PE_courses = ["PE6", "PE7", "PE8"]
 
 	X = {}			# decision variable for student assignments
 	Y = {}			# decision variable for teacher assignments
@@ -99,7 +99,7 @@ def build_model():
 				quicksum(X[student, course, period] for course in courses)
 				== 1, name="every_student_fully_scheduled_{}_{}".format(student, period))
 
-	print("Adding constraint to ensure one teacher per course/period")
+	print("Adding constraint to prevent teachers from being double-booked")
 	for teacher in staff_list:
 		for period in periods:
 			model.addConstr(
@@ -141,13 +141,10 @@ def build_model():
 				min_class_size[course] * quicksum(Y[teacher,course,period] for teacher in staff_list),
 				name='min_class_size_{}_{}'.format(course, period))
 
-	# print("Adding constraint to ensure each student takes at least one of each type of core class")
-	# for student in students:
-	# 	# for course_type in course_types:
-	# 	for course_type in ["MSMath"]:
-	# 		model.addConstr(
-	# 			quicksum(X[student, course, period] * core_type_indicator[course, course_type] for course in courses for period in periods) >= 1,
-	# 			name='core_class_requirement_{}_{}'.format(student, course_type))
+			model.addConstr(
+					quicksum(X[student,course,period] for student in students) <=
+					30 * quicksum(Y[teacher,course,period] for teacher in staff_list),
+					name='max_class_size_30_{}_{}'.format(course, period))
 
 	# print("Ensure each student takes at least {} core classes".format(NUM_CORE_CLASSES))
 	# for student in students:
@@ -155,7 +152,7 @@ def build_model():
 	# 		quicksum(X[student, course, period]*core[course] for course in courses for period in periods) == NUM_CORE_CLASSES,
 	# 		name='core_class_requirement_{}'.format(student))
 
-	print("Ensure each student gets assigned the core classes in which they're currently enrolled")
+	print("Ensure each student gets assigned exclusively to the core classes in which they're currently enrolled")
 	for student in students:
 		for course in courses:
 			# check if this student is currently taking this course and it's a core course
@@ -163,6 +160,13 @@ def build_model():
 				model.addConstr(
 					quicksum(X[student, course, period] for period in periods) == 1,
 					name='same_core_class_assignment_{}_{}'.format(student, course))
+
+			elif student_course[student, course] == 0 and core[course] == 1:
+				for period in periods:
+					model.addConstr(
+						X[student, course, period] == 0,
+						name='exclusive_core_class_assignment_{}_{}_{}'.format(student, course, period))
+
 
 	print("Assign students and teachers to lunch in either period {} or {}".format(lunch_periods[0], lunch_periods[1]))
 	for student in students:
@@ -228,26 +232,17 @@ def build_model():
 			model.addConstr(quicksum(w[teacher,period] for period in periods) == 1,
 				name='maxOneSink_{}'.format(teacher))
 
-
-
-			
-			
-
 	# print("Ensure each student takes PE once a day")
 	# for student in students:
-	# 	if grade[student] == 6:
-	# 		PE_courseName = "PE6"
-	# 	elif grade[student] == 7:
-	# 		PE_courseName = "PE7"
-	# 	elif grade[student] == 8:
-	# 		PE_courseName = "PE8"
-	# 	elif grade[student] == 5:
-	# 		continue
-	# 	else:
-	# 		print grade[student]
 	# 	model.addConstr(
-	# 		quicksum(X[student, PE_courseName, period] for period in periods) == 1,
+	# 		quicksum(X[student, course, period]*PE[course] for course in courses for period in periods) == 1,
 	# 		name='PE_requirement_{}'.format(student))
+
+	# 	# this ensures each PE class is in the right grade range
+	# 	for course in PE_courses:
+	# 		if grade[student] != grade_low[course]:
+	# 			for period in periods:
+	# 				model.addConstr(X[student, course, period] == 0, name='restrict_PE_grade_range_{}_{}_{}'.format(student, course, period))
 
 	numCurrentElectives = {}
 	for student in students:
@@ -268,22 +263,6 @@ def build_model():
 	# 		model.addConstr(
 	# 			maxClassSize[course] >= quicksum(X[student, course, period] for student in students),
 	# 			name='minimax_classSize_link_{}_{}'.format(course, period))
-
-
-	# print("Ensure student can't take a given class type more than twice per day")
-	# for student in students:
-	# 	for course_type in course_types:
-	# 		model.addConstr(
-	# 			quicksum(X[student, course, period] for period in periods for course in courses if core_type_indicator[course, course_type] == 1) <= 2,
-	# 			name='cant_take_core_class_type_more_than_once_{}_{}'.format(student, course_type))
-
-	# print("Force current students/class assignments")
-	# for student in students:
-	# 	for course in courses:
-	# 		if student_course[student, course] == 1:
-	# 			model.addConstr(
-	# 				quicksum(X[student, course, period] for period in periods) == 1,
-	# 				name='force_class_assignment_{}_{}'.format(student, course))
 
 	print("Building objective function")
 	objectiveList = []
