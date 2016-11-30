@@ -1,24 +1,49 @@
-
+## Pickled objects
+*.p
 
 data/
 results/
 
 *.csv
 
+## R
+.Rhistory
+
 
 # Gurobi files #
 ################
 *.mps
 *.sol
+*.log
+*.hnt
 
 # Python #
 ##########
 *.pyc
 
-# latex #
-#########
+## Core latex/pdflatex auxiliary files:
 *.aux
-*.bak
+*.lof
+*.log
+*.lot
+*.fls
+*.out
+*.toc
+*.fmt
+*.fot
+*.cb
+*.cb2
+*.bbl
+*.blg
+
+## Build tool auxiliary files:
+*.fdb_latexmk
+*.synctex
+*.synctex(busy)
+*.synctex.gz
+*.synctex.gz(busy)
+*.pdfsync
+
 
 # Logs and databases #
 ######################
