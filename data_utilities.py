@@ -132,6 +132,8 @@ def get_data():
 	grade = {}						# the grade of each student
 	grade_low = {}
 	grade_high = {}
+	PE_teacher = {}					# indicates if a teacher can teach PE
+	dance_teacher = {}
 
 	print("Building dictionaries by course")
 	count = 0
@@ -177,7 +179,9 @@ def get_data():
 	numPeriods = {}					# the number of periods a teacher is currently teaching
 	for staff in staff_list:
 		FTE[staff] = float(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'FTE'].values[0])
-		numPeriods[staff] = float(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'periods'].values[0])
+		numPeriods[staff] = int(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'periods'].values[0])
+		PE_teacher[staff] = int(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'pe_teacher'].values[0])
+		dance_teacher[staff] = int(staff_data_frame.loc[staff_data_frame['staff'] == staff, 'dance_teacher'].values[0])
 
 	print("Building dictionaries by student")
 	grade = {}
@@ -207,6 +211,9 @@ def get_data():
 	data["grade"] = grade
 	data["grade_low"] = grade_low
 	data["grade_high"] = grade_high
+	data["PE_teacher"] = PE_teacher
+	data["dance_teacher"] = dance_teacher
+	
 
 	return data
 

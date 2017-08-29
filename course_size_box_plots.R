@@ -14,7 +14,7 @@ SQL_QUERY = "SELECT *
 WHERE asof = '2016-11-29 15:58:45.000'
 ORDER BY COURSE_TITLE;"
 
-# make connection to GIS database
+# make connection to Data_and_Policy database
 conn_info = 'DRIVER={SQL Server};'
 conn_info = paste0(conn_info, 'SERVER=WNDWDEVDB;') # server name goes here
 conn_info = paste0(conn_info, 'DATABASE=Data_and_Policy;') # database name goes here
